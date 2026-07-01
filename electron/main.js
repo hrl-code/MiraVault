@@ -21,6 +21,9 @@ const {
   clearLibrary,
   rescanLibrary,
   getLibraryStats,
+  updateMetadataOverride,
+  clearMetadataOverride,
+  searchLibraryMetadataOptions,
   previewOrganizeSeriesFolder,
   organizeSeriesFolder
 } = require('./library')
@@ -31,14 +34,7 @@ const {
   getVlcPath
 } = require('./mpvPlayer')
 const qbittorrent = require('./qbittorrent')
-
-// MODO PORTABLE: redirigir userData a ./data junto al .exe
-if (app.isPackaged) {
-  const portableData = path.join(path.dirname(process.execPath), 'data')
-  fs.mkdirSync(portableData, { recursive: true })
-  app.setPath('userData', portableData)
-  app.setPath('logs', path.join(portableData, 'logs'))
-}
+const torrentEngine = require('./torrentEngine')
 
 const isDev = !app.isPackaged
 
@@ -204,6 +200,9 @@ ipcMain.handle('library:rescan', async () => rescanLibrary())
 ipcMain.handle('library:removeItem', async (_, id) => removeLibraryItem(id))
 ipcMain.handle('library:removeSource', async (_, sourcePath) => removeLibrarySource(sourcePath))
 ipcMain.handle('library:clear', async () => clearLibrary())
+ipcMain.handle('library:updateMetadataOverride', async (_, payload = {}) => updateMetadataOverride(payload.id, payload.data || {}))
+ipcMain.handle('library:clearMetadataOverride', async (_, id) => clearMetadataOverride(id))
+ipcMain.handle('library:searchMetadataOptions', async (_, id) => searchLibraryMetadataOptions(id))
 ipcMain.handle('library:previewOrganizeSeriesFolder', async (_, rootPath) => {
   const startedAt = Date.now()
   console.log('[organizer] preview:start', rootPath)
@@ -350,7 +349,21 @@ ipcMain.handle('player:saveConfig', async (_, { playerPath, playerName }) => {
   return true
 })
 
-// IPC: qBittorrent externo
+// IPC: torrent engine generico
+ipcMain.handle('torrent:getConfig', async () => torrentEngine.getConfig())
+ipcMain.handle('torrent:setConfig', async (_, config) => torrentEngine.setConfig(config))
+ipcMain.handle('torrent:engineStatus', async () => torrentEngine.getEngineStatus())
+ipcMain.handle('torrent:ping', async () => torrentEngine.ping())
+ipcMain.handle('torrent:list', async (_, filter) => torrentEngine.listTorrents(filter))
+ipcMain.handle('torrent:transferInfo', async () => torrentEngine.getTransferInfo())
+ipcMain.handle('torrent:add', async (_, payload) => torrentEngine.addTorrent(payload || {}))
+ipcMain.handle('torrent:pause', async (_, id) => torrentEngine.pauseTorrent(id))
+ipcMain.handle('torrent:resume', async (_, id) => torrentEngine.resumeTorrent(id))
+ipcMain.handle('torrent:delete', async (_, payload) => torrentEngine.deleteTorrent(payload || {}))
+ipcMain.handle('torrent:openContent', async (_, torrent) => torrentEngine.openContent(torrent))
+ipcMain.handle('torrent:importContent', async (_, torrent) => torrentEngine.importContent(torrent))
+
+// IPC: qBittorrent externo (compatibilidad)
 ipcMain.handle('qbittorrent:getConfig', async () => qbittorrent.getConfig())
 ipcMain.handle('qbittorrent:setConfig', async (_, config) => qbittorrent.setConfig(config))
 ipcMain.handle('qbittorrent:engineStatus', async () => qbittorrent.getEngineStatus())

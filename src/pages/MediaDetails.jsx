@@ -84,6 +84,163 @@ function UndoIcon() {
   )
 }
 
+function MetadataEditor({ detail, onSave, onReset }) {
+  const [open, setOpen] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [options, setOptions] = useState([])
+  const [form, setForm] = useState({
+    title: detail.title || '',
+    year: detail.year || '',
+    poster: detail.poster || '',
+    synopsis: detail.synopsis || '',
+    genres: detail.genres?.join(', ') || '',
+    duration: detail.duration || '',
+    director: detail.director || '',
+    cast: detail.cast?.join(', ') || '',
+    rating: detail.rating || ''
+  })
+
+  useEffect(() => {
+    setForm({
+      title: detail.title || '',
+      year: detail.year || '',
+      poster: detail.poster || '',
+      synopsis: detail.synopsis || '',
+      genres: detail.genres?.join(', ') || '',
+      duration: detail.duration || '',
+      director: detail.director || '',
+      cast: detail.cast?.join(', ') || '',
+      rating: detail.rating || ''
+    })
+  }, [detail])
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave({
+      ...form,
+      genres: form.genres,
+      cast: form.cast
+    })
+    setSaving(false)
+    setOpen(false)
+  }
+
+  async function handleReset() {
+    setSaving(true)
+    await onReset()
+    setSaving(false)
+    setOpen(false)
+  }
+
+  async function searchOptions() {
+    setSearching(true)
+    const result = await window.electronAPI?.librarySearchMetadataOptions?.(detail.id)
+    setOptions(Array.isArray(result?.options) ? result.options : [])
+    setSearching(false)
+  }
+
+  async function useOption(option) {
+    setSaving(true)
+    await onSave(option)
+    setSaving(false)
+    setOpen(false)
+  }
+
+  return (
+    <section className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-card)]/35 p-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-sm uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Metadata manual</h2>
+          <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
+            {detail.manualOverride ? 'Usando una seleccion manual. No se pisa al reescanear.' : 'Elige entre varias opciones si el automatico falla.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const nextOpen = !open
+            setOpen(nextOpen)
+            if (nextOpen && options.length === 0) setTimeout(searchOptions, 0)
+          }}
+          className="rounded-xl border border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]"
+        >
+          {open ? 'Cerrar opciones' : 'Cambiar datos'}
+        </button>
+      </div>
+
+      {open ? (
+        <div className="mt-4 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={searchOptions} disabled={searching} className="rounded-xl bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+              {searching ? 'Buscando...' : 'Buscar opciones'}
+            </button>
+            <button type="button" onClick={() => setAdvanced((value) => !value)} className="rounded-xl border border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]">
+              {advanced ? 'Ocultar manual' : 'Edicion manual'}
+            </button>
+            <button type="button" onClick={handleReset} disabled={saving} className="rounded-xl border border-[#e05555]/35 px-4 py-2 text-sm text-[#e05555] hover:bg-[#e05555]/10 disabled:opacity-50">
+              Restaurar automatico
+            </button>
+          </div>
+
+          {options.length > 0 ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {options.map((option, index) => (
+                <article key={`${option.provider}-${option.title}-${option.year}-${index}`} className="flex gap-3 rounded-2xl border border-[color:var(--border)] bg-black/10 p-3">
+                  <div className="h-28 w-20 shrink-0 overflow-hidden rounded-xl bg-[color:var(--bg-secondary)]">
+                    {option.poster ? <img src={option.poster} alt={option.title} className="h-full w-full object-cover" /> : null}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{option.title || 'Sin titulo'}</h3>
+                      {option.year ? <span className="text-xs text-[color:var(--text-muted)]">{option.year}</span> : null}
+                    </div>
+                    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--accent)]">{option.provider}</p>
+                    <p className="mt-2 line-clamp-3 text-xs leading-5 text-[color:var(--text-secondary)]">{option.synopsis || 'Sin sinopsis.'}</p>
+                    <button type="button" onClick={() => useOption(option)} disabled={saving} className="mt-3 rounded-xl bg-[color:var(--accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
+                      Usar esta opcion
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-[color:var(--border)] bg-black/10 p-4 text-sm text-[color:var(--text-secondary)]">
+              {searching ? 'Buscando coincidencias...' : 'No hay opciones cargadas todavia.'}
+            </p>
+          )}
+
+          {advanced ? (
+            <div className="space-y-4 border-t border-[color:var(--border)] pt-4">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_120px_120px]">
+                <input value={form.title} onChange={(event) => updateField('title', event.target.value)} placeholder="Titulo" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+                <input value={form.year} onChange={(event) => updateField('year', event.target.value)} placeholder="Ano" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+                <input value={form.rating} onChange={(event) => updateField('rating', event.target.value)} placeholder="Rating" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+              </div>
+              <input value={form.poster} onChange={(event) => updateField('poster', event.target.value)} placeholder="URL de caratula" className="w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+              <textarea value={form.synopsis} onChange={(event) => updateField('synopsis', event.target.value)} rows={5} placeholder="Sinopsis" className="w-full rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+              <div className="grid gap-3 md:grid-cols-2">
+                <input value={form.genres} onChange={(event) => updateField('genres', event.target.value)} placeholder="Generos separados por coma" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+                <input value={form.duration} onChange={(event) => updateField('duration', event.target.value)} placeholder="Duracion" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+                <input value={form.director} onChange={(event) => updateField('director', event.target.value)} placeholder="Director" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+                <input value={form.cast} onChange={(event) => updateField('cast', event.target.value)} placeholder="Reparto separado por coma" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+              </div>
+              <button type="button" onClick={handleSave} disabled={saving} className="rounded-xl bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                {saving ? 'Guardando...' : 'Guardar manual'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 function FileActions({ filePath, onPlay, progressKey, title }) {
   const progress = useWatchProgressStore((state) => state.progress[progressKey])
   const markWatched = useWatchProgressStore((state) => state.markWatched)
@@ -254,6 +411,26 @@ export default function MediaDetails() {
     show('Anadido a favoritos', 'success')
   }
 
+  async function saveMetadataOverride(data) {
+    const result = await window.electronAPI?.libraryUpdateMetadataOverride?.(mediaId, data)
+    if (!result?.ok) {
+      show(result?.error || 'No se pudieron guardar los datos', 'error')
+      return
+    }
+    setDetail(result.item)
+    show('Datos guardados', 'success')
+  }
+
+  async function resetMetadataOverride() {
+    const result = await window.electronAPI?.libraryClearMetadataOverride?.(mediaId)
+    if (!result?.ok) {
+      show(result?.error || 'No se pudo restaurar metadata automatica', 'error')
+      return
+    }
+    setDetail(result.item)
+    show('Metadata automatica restaurada', 'info')
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -383,6 +560,8 @@ export default function MediaDetails() {
               </select>
             </div>
           </section>
+
+          <MetadataEditor detail={detail} onSave={saveMetadataOverride} onReset={resetMetadataOverride} />
 
           {detail.type === 'series' ? (
             <section className="space-y-3">

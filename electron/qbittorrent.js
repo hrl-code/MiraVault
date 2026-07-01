@@ -316,27 +316,16 @@ function getActiveUrl(config) {
 
 function getManagedCandidates() {
   const roots = [
-    path.join(process.cwd(), 'portable', 'qbittorrent'),
-    path.join(__dirname, '..', 'portable', 'qbittorrent'),
     path.join(process.resourcesPath || '', 'qbittorrent')
   ]
 
   return roots.flatMap((root) => [
-    path.join(root, 'qbittorrent-nox.exe')
+    path.join(root, 'qbittorrent-engine.exe')
   ])
 }
 
 function getManagedExecutable() {
   return getManagedCandidates().find((candidate) => fs.existsSync(candidate)) || ''
-}
-
-function getPortableGuiExecutable() {
-  const candidates = [
-    path.join(process.cwd(), 'portable', 'qbittorrent', 'qbittorrent.exe'),
-    path.join(__dirname, '..', 'portable', 'qbittorrent', 'qbittorrent.exe'),
-    path.join(process.resourcesPath || '', 'qbittorrent', 'qbittorrent.exe')
-  ]
-  return candidates.find((candidate) => fs.existsSync(candidate)) || ''
 }
 
 function getManagedDataDir() {
@@ -352,7 +341,6 @@ async function getEngineStatus() {
     activeUrl: getActiveUrl(config),
     managedAvailable: Boolean(executable),
     managedExecutable: executable,
-    portableGuiExecutable: getPortableGuiExecutable(),
     managedRunning: Boolean(managedProcess && !managedProcess.killed),
     managedPort: config.managedPort
   }
@@ -365,7 +353,7 @@ async function startManagedEngine() {
   if (!executable) {
     return {
       ok: false,
-      error: 'No encuentro qbittorrent-nox.exe en portable/qbittorrent. El qbittorrent.exe normal abre GUI y no sirve como motor interno fiable.'
+      error: 'No hay motor qBittorrent interno instalado. Usa qBittorrent externo o espera al motor WebTorrent interno.'
     }
   }
 

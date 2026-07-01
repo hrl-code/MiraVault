@@ -1,12 +1,11 @@
 {
   "name": "miravault",
-  "version": "0.4.0-beta",
+  "version": "0.4.1-beta",
   "description": "Centro multimedia local para biblioteca, IPTV, torrents y progreso de visionado",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite --port 5173 --strictPort\" \"wait-on tcp:5173 && electron .\"",
-    "build": "vite build && electron-builder --win",
-    "build:portable": "vite build && electron-builder --win portable",
+    "build": "vite build && electron-builder --win nsis",
     "build:installer": "vite build && electron-builder --win nsis",
     "preview": "vite preview"
   },
@@ -18,6 +17,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.24.1",
+    "webtorrent": "^3.0.16",
     "zustand": "^4.5.4"
   },
   "devDependencies": {

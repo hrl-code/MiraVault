@@ -45,7 +45,10 @@ function stateLabel(state) {
     error: 'Error',
     missingFiles: 'Faltan archivos',
     queuedDL: 'En cola',
-    queuedUP: 'En cola'
+    queuedUP: 'En cola',
+    metadata: 'Buscando metadata',
+    paused: 'Pausado',
+    completed: 'Completado'
   }
   return labels[state] || state || 'Desconocido'
 }
@@ -139,13 +142,15 @@ function TorrentRow({ torrent, onAction }) {
 
 export default function Downloads() {
   const { show } = useToast()
+  const [activeEngine, setActiveEngine] = useState('webtorrent')
   const [config, setConfig] = useState({
     url: 'http://localhost:8080',
     username: 'admin',
     password: 'admin123',
     seriesDownloadPath: 'C:\\Users\\mache\\Downloads\\series'
   })
-  const [engine, setEngine] = useState({ mode: 'external', managedAvailable: false, managedRunning: false })
+  const [webConfig, setWebConfig] = useState({ downloadPath: '' })
+  const [engine, setEngine] = useState({ engine: 'webtorrent', ok: false })
   const [status, setStatus] = useState({ ok: false, checking: true, error: '' })
   const [torrents, setTorrents] = useState([])
   const [transfer, setTransfer] = useState(null)
@@ -200,24 +205,26 @@ export default function Downloads() {
   }
 
   async function loadConfig() {
-    const data = await window.electronAPI?.qbittorrentGetConfig?.()
-    if (data) setConfig(data)
-    const engineStatus = await window.electronAPI?.qbittorrentEngineStatus?.()
+    const data = await window.electronAPI?.torrentGetConfig?.()
+    if (data?.engine) setActiveEngine(data.engine)
+    if (data?.qbittorrent) setConfig(data.qbittorrent)
+    if (data?.webtorrent) setWebConfig(data.webtorrent)
+    const engineStatus = await window.electronAPI?.torrentEngineStatus?.()
     if (engineStatus) setEngine(engineStatus)
   }
 
   async function testConnection(showToast = false) {
     setStatus((current) => ({ ...current, checking: true }))
-    const result = await window.electronAPI?.qbittorrentPing?.()
+    const result = await window.electronAPI?.torrentPing?.()
     setStatus({ ok: Boolean(result?.ok), checking: false, error: result?.error || '', version: result?.version || '' })
-    if (showToast) show(result?.ok ? 'qBittorrent conectado' : result?.error || 'Sin conexion', result?.ok ? 'success' : 'error')
+    if (showToast) show(result?.ok ? 'Motor torrent disponible' : result?.error || 'Sin conexion', result?.ok ? 'success' : 'error')
     return result
   }
 
   async function loadTorrents() {
     const [items, transferInfo] = await Promise.all([
-      window.electronAPI?.qbittorrentList?.('all'),
-      window.electronAPI?.qbittorrentTransferInfo?.()
+      window.electronAPI?.torrentList?.('all'),
+      window.electronAPI?.torrentTransferInfo?.()
     ])
     setTorrents(Array.isArray(items) ? items : [])
     setTransfer(transferInfo || null)
@@ -241,35 +248,32 @@ export default function Downloads() {
   }, [])
 
   async function saveConfig() {
-    const next = await window.electronAPI?.qbittorrentSetConfig?.(config)
-    if (next) setConfig(next)
-    const engineStatus = await window.electronAPI?.qbittorrentEngineStatus?.()
+    const next = await window.electronAPI?.torrentSetConfig?.({
+      engine: activeEngine,
+      qbittorrent: config,
+      webtorrent: webConfig
+    })
+    if (next?.engine) setActiveEngine(next.engine)
+    if (next?.qbittorrent) setConfig(next.qbittorrent)
+    if (next?.webtorrent) setWebConfig(next.webtorrent)
+    const engineStatus = await window.electronAPI?.torrentEngineStatus?.()
     if (engineStatus) setEngine(engineStatus)
     await testConnection(true)
   }
 
-  async function setMode(mode) {
-    const next = await window.electronAPI?.qbittorrentSetConfig?.({ ...config, mode })
-    if (next) setConfig(next)
-    const engineStatus = await window.electronAPI?.qbittorrentEngineStatus?.()
+  async function chooseEngine(nextEngine) {
+    const next = await window.electronAPI?.torrentSetConfig?.({
+      engine: nextEngine,
+      qbittorrent: config,
+      webtorrent: webConfig
+    })
+    if (next?.engine) setActiveEngine(next.engine)
+    if (next?.qbittorrent) setConfig(next.qbittorrent)
+    if (next?.webtorrent) setWebConfig(next.webtorrent)
+    const engineStatus = await window.electronAPI?.torrentEngineStatus?.()
     if (engineStatus) setEngine(engineStatus)
     await testConnection(true)
-  }
-
-  async function startManaged() {
-    const result = await window.electronAPI?.qbittorrentStartManaged?.()
-    show(result?.ok ? 'Motor interno iniciado' : result?.error || 'No se pudo iniciar el motor interno', result?.ok ? 'success' : 'error')
-    const engineStatus = await window.electronAPI?.qbittorrentEngineStatus?.()
-    if (engineStatus) setEngine(engineStatus)
-    await testConnection(false)
-  }
-
-  async function stopManaged() {
-    const result = await window.electronAPI?.qbittorrentStopManaged?.()
-    show(result?.ok ? 'Motor interno detenido' : result?.error || 'No se pudo detener el motor interno', result?.ok ? 'info' : 'error')
-    const engineStatus = await window.electronAPI?.qbittorrentEngineStatus?.()
-    if (engineStatus) setEngine(engineStatus)
-    await testConnection(false)
+    await loadTorrents()
   }
 
   async function selectFolder() {
@@ -291,7 +295,7 @@ export default function Downloads() {
 
   async function addTorrent() {
     setAdding(true)
-    const result = await window.electronAPI?.qbittorrentAdd?.({ magnetOrUrl, torrentFiles, savePath })
+    const result = await window.electronAPI?.torrentAdd?.({ magnetOrUrl, torrentFiles, savePath })
     setAdding(false)
     if (!result?.ok) {
       show(result?.error || 'No se pudo anadir el torrent', 'error')
@@ -306,25 +310,25 @@ export default function Downloads() {
     } else if (result.savePath) {
       show('Torrent enviado a la carpeta seleccionada', 'success')
     } else {
-      show('Torrent enviado a qBittorrent', 'success')
+      show(activeEngine === 'webtorrent' ? 'Torrent añadido a WebTorrent' : 'Torrent enviado a qBittorrent', 'success')
     }
     await loadTorrents()
   }
 
   async function handleAction(action, torrent) {
-    if (action === 'pause') await window.electronAPI?.qbittorrentPause?.(torrent.hash)
-    if (action === 'resume') await window.electronAPI?.qbittorrentResume?.(torrent.hash)
+    if (action === 'pause') await window.electronAPI?.torrentPause?.(torrent.hash)
+    if (action === 'resume') await window.electronAPI?.torrentResume?.(torrent.hash)
     if (action === 'open') {
-      const result = await window.electronAPI?.qbittorrentOpenContent?.(torrent)
+      const result = await window.electronAPI?.torrentOpenContent?.(torrent)
       if (!result?.ok) show(result?.error || 'No se pudo abrir la carpeta', 'error')
     }
     if (action === 'import') {
-      const result = await window.electronAPI?.qbittorrentImportContent?.(torrent)
+      const result = await window.electronAPI?.torrentImportContent?.(torrent)
       show(result?.ok ? 'Contenido importado a la biblioteca' : result?.error || 'No se pudo importar', result?.ok ? 'success' : 'error')
     }
     if (action === 'delete') {
       const deleteFiles = window.confirm('Quieres borrar tambien los archivos descargados?')
-      const result = await window.electronAPI?.qbittorrentDelete?.({ hash: torrent.hash, deleteFiles })
+      const result = await window.electronAPI?.torrentDelete?.({ hash: torrent.hash, deleteFiles })
       if (!result?.ok) show(result?.error || 'No se pudo eliminar', 'error')
     }
     await loadTorrents()
@@ -334,10 +338,10 @@ export default function Downloads() {
     <div className="space-y-6">
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.32em] text-[color:var(--text-muted)]">qBittorrent</p>
+          <p className="text-xs uppercase tracking-[0.32em] text-[color:var(--text-muted)]">Torrents</p>
           <h1 className="mt-2 text-4xl font-semibold text-[color:var(--text-primary)]">Descargas</h1>
           <p className="mt-2 max-w-2xl text-sm text-[color:var(--text-secondary)]">
-            Envia magnets a tu qBittorrent externo y, cuando terminen, importalos a la biblioteca local.
+            Descarga con WebTorrent interno o conecta qBittorrent externo como modo avanzado.
           </p>
         </div>
         <div className={['rounded-full px-4 py-2 text-sm', status.ok ? 'bg-[#1f8b58]/20 text-[#84d49c]' : 'bg-[#e05555]/15 text-[#e05555]'].join(' ')}>
@@ -368,74 +372,49 @@ export default function Downloads() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-[color:var(--text-primary)]">Motor torrent</h2>
-            <p className="mt-1 text-sm text-[color:var(--text-secondary)]">
-              Usa tu qBittorrent externo o uno portable gestionado por MiraVault.
-            </p>
+            <p className="mt-1 text-sm text-[color:var(--text-secondary)]">Elige motor interno WebTorrent o qBittorrent externo.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setMode('external')}
-              className={['rounded-xl px-4 py-2 text-sm', config.mode !== 'managed' ? 'bg-[color:var(--accent)] text-white' : 'border border-[color:var(--border)] text-[color:var(--text-primary)]'].join(' ')}
+              onClick={() => chooseEngine('webtorrent')}
+              className={['rounded-xl px-4 py-2 text-sm', activeEngine === 'webtorrent' ? 'bg-[color:var(--accent)] text-white' : 'border border-[color:var(--border)] text-[color:var(--text-primary)]'].join(' ')}
             >
-              Externo
+              WebTorrent
             </button>
             <button
               type="button"
-              onClick={() => setMode('managed')}
-              disabled={!engine.managedAvailable}
-              className={[
-                'rounded-xl px-4 py-2 text-sm',
-                config.mode === 'managed' ? 'bg-[color:var(--accent)] text-white' : 'border border-[color:var(--border)] text-[color:var(--text-primary)]',
-                !engine.managedAvailable ? 'cursor-not-allowed opacity-45' : ''
-              ].join(' ')}
-              title={!engine.managedAvailable ? 'Necesitas qbittorrent-nox.exe para activar el modo interno' : 'Usar motor interno'}
+              onClick={() => chooseEngine('qbittorrent')}
+              className={['rounded-xl px-4 py-2 text-sm', activeEngine === 'qbittorrent' ? 'bg-[color:var(--accent)] text-white' : 'border border-[color:var(--border)] text-[color:var(--text-primary)]'].join(' ')}
             >
-              Interno
+              qBittorrent
             </button>
           </div>
         </div>
 
-        {!engine.managedAvailable && engine.portableGuiExecutable ? (
-          <div className="mt-4 rounded-2xl border border-[#f3cf63]/25 bg-[#f3cf63]/10 p-4 text-sm text-[#f3cf63]">
-            Hay qBittorrent GUI en portable, pero no sirve como motor interno fiable: {engine.portableGuiExecutable}
+        {activeEngine === 'qbittorrent' ? (
+          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_160px_160px_auto_auto]">
+            <input
+              value={config.url}
+              onChange={(event) => setConfig((current) => ({ ...current, url: event.target.value }))}
+              className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]"
+            />
+            <input value={config.username} onChange={(event) => setConfig((current) => ({ ...current, username: event.target.value }))} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+            <input type="password" value={config.password} onChange={(event) => setConfig((current) => ({ ...current, password: event.target.value }))} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+            <button type="button" onClick={saveConfig} className="rounded-xl bg-[color:var(--accent)] px-4 py-3 text-sm font-medium text-white">Guardar</button>
+            <button type="button" onClick={() => testConnection(true)} className="rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]">Probar</button>
           </div>
-        ) : null}
-
-        {config.mode === 'managed' ? (
-          <div className="mt-4 rounded-2xl border border-[color:var(--border)] bg-black/10 p-4">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <p className={['text-sm font-medium', engine.managedAvailable ? 'text-[#84d49c]' : 'text-[#e05555]'].join(' ')}>
-                  {engine.managedAvailable ? 'Motor interno encontrado' : 'Falta qbittorrent-nox.exe'}
-                </p>
-                <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
-                  {engine.managedExecutable || 'Coloca qbittorrent-nox.exe en portable/qbittorrent/. El qbittorrent.exe normal abre interfaz grafica y no sirve como motor interno fiable.'}
-                </p>
-                {engine.portableGuiExecutable && !engine.managedAvailable ? (
-                  <p className="mt-1 text-xs text-[#f3cf63]">Detectado solo GUI: {engine.portableGuiExecutable}</p>
-                ) : null}
-                <p className="mt-1 text-xs text-[color:var(--text-muted)]">URL interna: {config.managedUrl || 'http://127.0.0.1:18080'}</p>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={startManaged} className="rounded-xl bg-[color:var(--accent)] px-4 py-2 text-sm font-medium text-white">Iniciar</button>
-                <button type="button" onClick={stopManaged} className="rounded-xl border border-[color:var(--border)] px-4 py-2 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]">Parar</button>
-              </div>
-            </div>
+        ) : (
+          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+            <input
+              value={webConfig.downloadPath || ''}
+              onChange={(event) => setWebConfig((current) => ({ ...current, downloadPath: event.target.value }))}
+              placeholder="Carpeta de descargas WebTorrent"
+              className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]"
+            />
+            <button type="button" onClick={saveConfig} className="rounded-xl bg-[color:var(--accent)] px-4 py-3 text-sm font-medium text-white">Guardar</button>
           </div>
-        ) : null}
-
-        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_160px_160px_auto_auto]">
-          <input
-            value={config.mode === 'managed' ? config.managedUrl || 'http://127.0.0.1:18080' : config.url}
-            onChange={(event) => setConfig((current) => config.mode === 'managed' ? ({ ...current, managedUrl: event.target.value }) : ({ ...current, url: event.target.value }))}
-            className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]"
-          />
-          <input value={config.username} onChange={(event) => setConfig((current) => ({ ...current, username: event.target.value }))} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
-          <input type="password" value={config.password} onChange={(event) => setConfig((current) => ({ ...current, password: event.target.value }))} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
-          <button type="button" onClick={saveConfig} className="rounded-xl bg-[color:var(--accent)] px-4 py-3 text-sm font-medium text-white">Guardar</button>
-          <button type="button" onClick={() => testConnection(true)} className="rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]">Probar</button>
-        </div>
+        )}
         <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
           <label className="sr-only" htmlFor="series-download-path">Carpeta raiz de series</label>
           <input

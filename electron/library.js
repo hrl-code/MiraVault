@@ -2,7 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 const { shell } = require('electron')
-const { enrichMetadata } = require('./metadata')
+const { enrichMetadata, searchMetadataOptions } = require('./metadata')
 const { getStore } = require('./storeHelper')
 
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.mov', '.wmv', '.m4v', '.ts'])
@@ -52,6 +52,11 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : []
 }
 
+function ensureStringArray(value) {
+  if (Array.isArray(value)) return value.map(cleanText).filter(Boolean)
+  return cleanText(value).split(',').map(cleanText).filter(Boolean)
+}
+
 async function getLibraryState() {
   const store = await getStore()
   return store.get('libraryState', {
@@ -64,6 +69,44 @@ async function getLibraryState() {
 async function saveLibraryState(state) {
   const store = await getStore()
   store.set('libraryState', state)
+}
+
+async function getMetadataOverrides() {
+  const store = await getStore()
+  return store.get('metadataOverrides', {})
+}
+
+async function saveMetadataOverrides(overrides) {
+  const store = await getStore()
+  store.set('metadataOverrides', overrides || {})
+}
+
+function sanitizeMetadataOverride(data = {}) {
+  const override = {}
+  const stringFields = ['title', 'year', 'poster', 'synopsis', 'duration', 'director', 'rating']
+  for (const field of stringFields) {
+    if (Object.prototype.hasOwnProperty.call(data, field)) override[field] = cleanText(data[field])
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'genres')) override.genres = ensureStringArray(data.genres)
+  if (Object.prototype.hasOwnProperty.call(data, 'cast')) override.cast = ensureStringArray(data.cast)
+  override.manualOverride = true
+  override.updatedAt = Date.now()
+  return override
+}
+
+function applyMetadataOverride(item, overrides = {}) {
+  const override = overrides[item.id]
+  if (!override) return item
+  return {
+    ...item,
+    ...override,
+    id: item.id,
+    type: item.type,
+    files: item.files,
+    seasons: item.seasons,
+    totalSize: item.totalSize,
+    manualOverride: true
+  }
 }
 
 function statSafe(targetPath) {
@@ -863,7 +906,9 @@ function parseMediaFile(file, sourceRoot = '') {
   const ext = path.extname(file.path).toLowerCase()
   const baseName = path.basename(file.path, ext)
   const normalizedBase = baseName.replace(/[._]+/g, ' ')
-  const year = extractYear(normalizedBase)
+  const relativePath = sourceRoot ? path.relative(sourceRoot, file.path) : file.path
+  const parentText = path.dirname(relativePath).split(path.sep).join(' ')
+  const year = extractYear(`${normalizedBase} ${parentText}`)
   const quality = extractQuality(normalizedBase)
   const language = extractLanguage(normalizedBase)
 
@@ -1168,9 +1213,10 @@ function groupParsedFiles(parsedFiles, preferredRoot = '') {
 
 async function enrichItems(items) {
   const enriched = []
+  const overrides = await getMetadataOverrides()
   for (const item of items) {
     const metadata = await enrichMetadata(item)
-    enriched.push({
+    enriched.push(applyMetadataOverride({
       ...item,
       poster: metadata.poster || item.poster,
       synopsis: metadata.synopsis || item.synopsis,
@@ -1179,7 +1225,7 @@ async function enrichItems(items) {
       director: metadata.director || item.director,
       cast: metadata.cast || item.cast,
       rating: metadata.rating || item.rating
-    })
+    }, overrides))
   }
   return enriched
 }
@@ -1217,7 +1263,9 @@ async function rebuildLibraryFromSources(sources) {
 async function getItems() {
   const state = await getLibraryState()
   const store = await getStore()
+  const overrides = await getMetadataOverrides()
   return normalizeLibraryItems(state.items, store.get('qbittorrent.seriesDownloadPath', ''), state.sources)
+    .map((item) => applyMetadataOverride(item, overrides))
 }
 
 async function listLibrary() {
@@ -1232,6 +1280,34 @@ async function getLibrarySources() {
 async function getLibraryItem(id) {
   const items = await getItems()
   return items.find((item) => item.id === id) || null
+}
+
+async function updateMetadataOverride(id, data = {}) {
+  const items = await getItems()
+  const item = items.find((entry) => entry.id === id)
+  if (!item) return { ok: false, error: 'No se encontro este contenido.' }
+
+  const overrides = await getMetadataOverrides()
+  overrides[id] = {
+    ...(overrides[id] || {}),
+    ...sanitizeMetadataOverride(data)
+  }
+  await saveMetadataOverrides(overrides)
+  return { ok: true, item: await getLibraryItem(id) }
+}
+
+async function clearMetadataOverride(id) {
+  const overrides = await getMetadataOverrides()
+  delete overrides[id]
+  await saveMetadataOverrides(overrides)
+  return { ok: true, item: await getLibraryItem(id) }
+}
+
+async function searchLibraryMetadataOptions(id) {
+  const item = await getLibraryItem(id)
+  if (!item) return { ok: false, error: 'No se encontro este contenido.', options: [] }
+  const options = await searchMetadataOptions(item)
+  return { ok: true, options }
 }
 
 async function importPaths(pathsToImport) {
@@ -1318,6 +1394,9 @@ module.exports = {
   removeLibrarySource,
   rescanLibrary,
   getLibraryStats,
+  updateMetadataOverride,
+  clearMetadataOverride,
+  searchLibraryMetadataOptions,
   previewOrganizeSeriesFolder: buildSeriesOrganizationPlan,
   organizeSeriesFolder
 }

@@ -131,7 +131,7 @@ export default function Settings() {
         <h2 className="text-2xl font-semibold text-[color:var(--text-primary)]">Reproductor de video</h2>
         <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">
           MiraVault usa VLC como reproductor externo preferido para MKV, audio multicanal, subtitulos y pantalla completa.
-          Si colocas vlc.exe en portable/vlc/vlc.exe o tienes VLC instalado, se usara automaticamente.
+          Instala VLC en Windows o selecciona manualmente la ruta del ejecutable.
         </p>
         <div className="mt-4 space-y-4">
           <div className="rounded-[20px] border border-[color:var(--border)] bg-black/10 p-4">

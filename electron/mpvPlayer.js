@@ -9,15 +9,6 @@ const { updateProgress, markWatched } = require('./tracker')
 
 let session = null
 
-function getPortableVlcPath() {
-  const candidates = [
-    path.join(process.cwd(), 'portable', 'vlc', 'vlc.exe'),
-    path.join(__dirname, '..', 'portable', 'vlc', 'vlc.exe'),
-    path.join(process.resourcesPath || '', 'vlc', 'vlc.exe')
-  ]
-  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || ''
-}
-
 async function getVlcPath() {
   const store = await getStore()
   const configuredPath = store.get('playerPath', '')
@@ -31,7 +22,7 @@ async function getVlcPath() {
   const systemPath = 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe'
   if (fs.existsSync(systemPath)) return systemPath
 
-  return getPortableVlcPath()
+  return ''
 }
 
 // Backward-compatible export name used by main.js/status UI.

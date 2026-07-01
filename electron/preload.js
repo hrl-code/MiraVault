@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   libraryRemoveItem: (id) => ipcRenderer.invoke('library:removeItem', id),
   libraryRemoveSource: (sourcePath) => ipcRenderer.invoke('library:removeSource', sourcePath),
   libraryClear: () => ipcRenderer.invoke('library:clear'),
+  libraryUpdateMetadataOverride: (id, data) => ipcRenderer.invoke('library:updateMetadataOverride', { id, data }),
+  libraryClearMetadataOverride: (id) => ipcRenderer.invoke('library:clearMetadataOverride', id),
+  librarySearchMetadataOptions: (id) => ipcRenderer.invoke('library:searchMetadataOptions', id),
   libraryPreviewOrganizeSeriesFolder: (rootPath) => ipcRenderer.invoke('library:previewOrganizeSeriesFolder', rootPath),
   libraryOrganizeSeriesFolder: (rootPath) => ipcRenderer.invoke('library:organizeSeriesFolder', rootPath),
 
@@ -55,7 +58,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playerGetConfig: () => ipcRenderer.invoke('player:getConfig'),
   playerSaveConfig: (cfg) => ipcRenderer.invoke('player:saveConfig', cfg),
 
-  // qBittorrent externo
+  // Motor torrent generico
+  torrentGetConfig: () => ipcRenderer.invoke('torrent:getConfig'),
+  torrentSetConfig: (config) => ipcRenderer.invoke('torrent:setConfig', config),
+  torrentEngineStatus: () => ipcRenderer.invoke('torrent:engineStatus'),
+  torrentPing: () => ipcRenderer.invoke('torrent:ping'),
+  torrentList: (filter) => ipcRenderer.invoke('torrent:list', filter),
+  torrentTransferInfo: () => ipcRenderer.invoke('torrent:transferInfo'),
+  torrentAdd: (payload) => ipcRenderer.invoke('torrent:add', payload),
+  torrentPause: (id) => ipcRenderer.invoke('torrent:pause', id),
+  torrentResume: (id) => ipcRenderer.invoke('torrent:resume', id),
+  torrentDelete: (payload) => ipcRenderer.invoke('torrent:delete', payload),
+  torrentOpenContent: (torrent) => ipcRenderer.invoke('torrent:openContent', torrent),
+  torrentImportContent: (torrent) => ipcRenderer.invoke('torrent:importContent', torrent),
+
+  // qBittorrent externo (compatibilidad)
   qbittorrentGetConfig: () => ipcRenderer.invoke('qbittorrent:getConfig'),
   qbittorrentSetConfig: (config) => ipcRenderer.invoke('qbittorrent:setConfig', config),
   qbittorrentEngineStatus: () => ipcRenderer.invoke('qbittorrent:engineStatus'),

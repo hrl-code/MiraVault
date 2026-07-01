@@ -28,9 +28,3 @@ Thumbs.db
 # Temporary local data
 tmp-*/
 data/
-
-# Portable binaries are local-only. Keep placeholders and instructions.
-portable/**/*
-!portable/**/
-!portable/**/.gitkeep
-!portable/**/README.txt
