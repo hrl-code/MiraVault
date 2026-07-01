@@ -1,0 +1,73 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Ventana
+  minimize: () => ipcRenderer.send('win:minimize'),
+  maximize: () => ipcRenderer.send('win:maximize'),
+  close: () => ipcRenderer.send('win:close'),
+
+  // Dialogos
+  selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  selectMediaFiles: () => ipcRenderer.invoke('dialog:selectMediaFiles'),
+  selectTorrentFiles: () => ipcRenderer.invoke('dialog:selectTorrentFiles'),
+  openFolder: (p) => ipcRenderer.invoke('shell:openFolder', p),
+  openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
+  iptvFetchPlaylist: (url) => ipcRenderer.invoke('iptv:fetchPlaylist', url),
+
+  // Config
+  getTheme: () => ipcRenderer.invoke('config:getTheme'),
+  setTheme: (v) => ipcRenderer.invoke('config:setTheme', v),
+
+  // Biblioteca local
+  libraryList: () => ipcRenderer.invoke('library:list'),
+  libraryGetItem: (id) => ipcRenderer.invoke('library:getItem', id),
+  libraryGetSources: () => ipcRenderer.invoke('library:getSources'),
+  libraryGetStats: () => ipcRenderer.invoke('library:getStats'),
+  libraryImportPaths: (paths) => ipcRenderer.invoke('library:importPaths', paths),
+  libraryRescan: () => ipcRenderer.invoke('library:rescan'),
+  libraryRemoveItem: (id) => ipcRenderer.invoke('library:removeItem', id),
+  libraryRemoveSource: (sourcePath) => ipcRenderer.invoke('library:removeSource', sourcePath),
+  libraryClear: () => ipcRenderer.invoke('library:clear'),
+  libraryPreviewOrganizeSeriesFolder: (rootPath) => ipcRenderer.invoke('library:previewOrganizeSeriesFolder', rootPath),
+  libraryOrganizeSeriesFolder: (rootPath) => ipcRenderer.invoke('library:organizeSeriesFolder', rootPath),
+
+  // Progreso de visualizacion
+  getWatchProgress: () => ipcRenderer.invoke('watch:getAll'),
+  getProgress: (key) => ipcRenderer.invoke('watch:getProgress', key),
+  updateWatchProgress: (key, data) => ipcRenderer.invoke('watch:update', { key, data }),
+  markWatched: (key) => ipcRenderer.invoke('watch:markWatched', key),
+  markUnwatched: (key) => ipcRenderer.invoke('watch:markUnwatched', key),
+  clearWatchProgress: () => ipcRenderer.invoke('watch:clearAll'),
+  onWatchProgressChanged: (callback) => {
+    const listener = (_, payload) => callback(payload)
+    ipcRenderer.on('watch:progressChanged', listener)
+    return () => ipcRenderer.removeListener('watch:progressChanged', listener)
+  },
+
+  // Player
+  playerOpen: (filePath, startTime) => ipcRenderer.invoke('player:open', filePath, startTime),
+  playerOpenTracked: (payload) => ipcRenderer.invoke('player:openTracked', payload),
+  playerStopTracked: () => ipcRenderer.invoke('player:stopTracked'),
+  playerCommandTracked: (payload) => ipcRenderer.invoke('player:commandTracked', payload),
+  playerGetTrackedStatus: () => ipcRenderer.invoke('player:getTrackedStatus'),
+  playerFindFile: (opts) => ipcRenderer.invoke('player:findFile', opts),
+  playerSelectExe: () => ipcRenderer.invoke('player:selectExe'),
+  playerGetConfig: () => ipcRenderer.invoke('player:getConfig'),
+  playerSaveConfig: (cfg) => ipcRenderer.invoke('player:saveConfig', cfg),
+
+  // qBittorrent externo
+  qbittorrentGetConfig: () => ipcRenderer.invoke('qbittorrent:getConfig'),
+  qbittorrentSetConfig: (config) => ipcRenderer.invoke('qbittorrent:setConfig', config),
+  qbittorrentEngineStatus: () => ipcRenderer.invoke('qbittorrent:engineStatus'),
+  qbittorrentStartManaged: () => ipcRenderer.invoke('qbittorrent:startManaged'),
+  qbittorrentStopManaged: () => ipcRenderer.invoke('qbittorrent:stopManaged'),
+  qbittorrentPing: () => ipcRenderer.invoke('qbittorrent:ping'),
+  qbittorrentList: (filter) => ipcRenderer.invoke('qbittorrent:list', filter),
+  qbittorrentTransferInfo: () => ipcRenderer.invoke('qbittorrent:transferInfo'),
+  qbittorrentAdd: (payload) => ipcRenderer.invoke('qbittorrent:add', payload),
+  qbittorrentPause: (hash) => ipcRenderer.invoke('qbittorrent:pause', hash),
+  qbittorrentResume: (hash) => ipcRenderer.invoke('qbittorrent:resume', hash),
+  qbittorrentDelete: (payload) => ipcRenderer.invoke('qbittorrent:delete', payload),
+  qbittorrentOpenContent: (torrent) => ipcRenderer.invoke('qbittorrent:openContent', torrent),
+  qbittorrentImportContent: (torrent) => ipcRenderer.invoke('qbittorrent:importContent', torrent),
+})

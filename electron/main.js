@@ -1,0 +1,381 @@
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const path = require('path')
+const fs = require('fs')
+const { execFile, spawn } = require('child_process')
+const { getStore } = require('./storeHelper')
+const {
+  getProgress,
+  updateProgress,
+  markWatched,
+  markUnwatched,
+  getAllProgress,
+  clearAllProgress
+} = require('./tracker')
+const {
+  listLibrary,
+  getLibraryItem,
+  getLibrarySources,
+  importPaths,
+  removeLibraryItem,
+  removeLibrarySource,
+  clearLibrary,
+  rescanLibrary,
+  getLibraryStats,
+  previewOrganizeSeriesFolder,
+  organizeSeriesFolder
+} = require('./library')
+const {
+  openTrackedPlayback,
+  stopTrackedPlayback,
+  commandTrackedPlayback,
+  getVlcPath
+} = require('./mpvPlayer')
+const qbittorrent = require('./qbittorrent')
+
+// MODO PORTABLE: redirigir userData a ./data junto al .exe
+if (app.isPackaged) {
+  const portableData = path.join(path.dirname(process.execPath), 'data')
+  fs.mkdirSync(portableData, { recursive: true })
+  app.setPath('userData', portableData)
+  app.setPath('logs', path.join(portableData, 'logs'))
+}
+
+const isDev = !app.isPackaged
+
+// El reproductor interno usa <video> de Chromium. En algunos equipos/formatos
+// aparecen artefactos al hacer seek con decodificacion por GPU.
+app.disableHardwareAcceleration()
+app.commandLine.appendSwitch('disable-gpu-compositing')
+app.commandLine.appendSwitch('disable-zero-copy')
+
+let mainWindow
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 960,
+    minHeight: 640,
+    frame: false,
+    backgroundColor: '#0f0f1a',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: false
+    }
+  })
+
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173')
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+  }
+}
+
+const DEFAULTS = {
+  theme: 'dark-blue'
+}
+
+function runOrganizerWorker(action, rootPath, timeoutMs) {
+  return new Promise((resolve) => {
+    const workerPath = path.join(__dirname, 'organizerWorker.js')
+    const child = spawn(process.execPath, [workerPath, action, rootPath], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const timeoutId = setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.kill()
+      resolve({
+        ok: false,
+        error: 'La carpeta tarda demasiado en responder. Prueba con una subcarpeta mas concreta o revisa la unidad.',
+        items: [],
+        timedOut: true
+      })
+    }, timeoutMs)
+
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+    child.on('error', (error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeoutId)
+      resolve({ ok: false, error: error.message, items: [] })
+    })
+    child.on('close', () => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeoutId)
+      try {
+        resolve(JSON.parse(stdout || '{}'))
+      } catch {
+        resolve({
+          ok: false,
+          error: stderr || stdout || 'El organizador no devolvio una respuesta valida.',
+          items: []
+        })
+      }
+    })
+  })
+}
+
+app.whenReady().then(async () => {
+  createWindow()
+})
+
+app.on('window-all-closed', async () => {
+  app.quit()
+})
+
+// IPC: ventana
+ipcMain.on('win:minimize', () => mainWindow?.minimize())
+ipcMain.on('win:maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize())
+ipcMain.on('win:close', () => mainWindow?.close())
+
+// IPC: dialogos
+ipcMain.handle('dialog:selectFolder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
+  return result.canceled ? null : result.filePaths[0]
+})
+
+ipcMain.handle('dialog:selectMediaFiles', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      {
+        name: 'Video',
+        extensions: ['mkv', 'mp4', 'avi', 'mov', 'wmv', 'm4v', 'ts']
+      }
+    ]
+  })
+  return result.canceled ? [] : result.filePaths
+})
+
+ipcMain.handle('dialog:selectTorrentFiles', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Torrent', extensions: ['torrent'] }
+    ]
+  })
+  return result.canceled ? [] : result.filePaths
+})
+
+ipcMain.handle('shell:openFolder', (_, targetPath) => shell.openPath(targetPath))
+ipcMain.handle('shell:openPath', (_, targetPath) => shell.openPath(targetPath))
+
+ipcMain.handle('iptv:fetchPlaylist', async (_, url) => {
+  const targetUrl = String(url || '').trim()
+  if (!/^https?:\/\//i.test(targetUrl)) return { ok: false, error: 'URL IPTV no valida.' }
+
+  try {
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'MiraVault/1.0 IPTV',
+        Accept: 'application/x-mpegURL, audio/mpegurl, text/plain, */*'
+      }
+    })
+    if (!response.ok) return { ok: false, error: `HTTP ${response.status}` }
+    const text = await response.text()
+    return { ok: true, text }
+  } catch (error) {
+    return { ok: false, error: error.message }
+  }
+})
+
+// IPC: config
+ipcMain.handle('config:getTheme', async () => (await getStore()).get('theme', DEFAULTS.theme))
+ipcMain.handle('config:setTheme', async (_, value) => { (await getStore()).set('theme', value); return true })
+
+// IPC: biblioteca local
+ipcMain.handle('library:list', async () => listLibrary())
+ipcMain.handle('library:getItem', async (_, id) => getLibraryItem(id))
+ipcMain.handle('library:getSources', async () => getLibrarySources())
+ipcMain.handle('library:getStats', async () => getLibraryStats())
+ipcMain.handle('library:importPaths', async (_, pathsToImport) => importPaths(pathsToImport))
+ipcMain.handle('library:rescan', async () => rescanLibrary())
+ipcMain.handle('library:removeItem', async (_, id) => removeLibraryItem(id))
+ipcMain.handle('library:removeSource', async (_, sourcePath) => removeLibrarySource(sourcePath))
+ipcMain.handle('library:clear', async () => clearLibrary())
+ipcMain.handle('library:previewOrganizeSeriesFolder', async (_, rootPath) => {
+  const startedAt = Date.now()
+  console.log('[organizer] preview:start', rootPath)
+  try {
+    const result = await runOrganizerWorker('preview', rootPath, 20000)
+    console.log('[organizer] preview:done', {
+      ms: Date.now() - startedAt,
+      ok: result?.ok,
+      scanned: result?.scanned,
+      moved: result?.moved,
+      cleaned: result?.cleaned,
+      items: result?.items?.length,
+      truncated: result?.truncated
+    })
+    return result
+  } catch (error) {
+    console.error('[organizer] preview:error', error)
+    return { ok: false, error: error.message || 'No se pudo analizar la carpeta.', items: [] }
+  }
+})
+ipcMain.handle('library:organizeSeriesFolder', async (_, rootPath) => {
+  const startedAt = Date.now()
+  console.log('[organizer] organize:start', rootPath)
+  try {
+    const result = await runOrganizerWorker('organize', rootPath, 90000)
+    console.log('[organizer] organize:done', {
+      ms: Date.now() - startedAt,
+      ok: result?.ok,
+      moved: result?.moved,
+      cleaned: result?.cleaned,
+      items: result?.items?.length,
+      truncated: result?.truncated
+    })
+    return result
+  } catch (error) {
+    console.error('[organizer] organize:error', error)
+    return { ok: false, error: error.message || 'No se pudo ordenar la carpeta.', items: [] }
+  }
+})
+
+// IPC: progreso de visualizacion
+ipcMain.handle('watch:getAll', async () => getAllProgress())
+ipcMain.handle('watch:getProgress', async (_, key) => getProgress(key))
+ipcMain.handle('watch:update', async (_, { key, data }) => updateProgress(key, data))
+ipcMain.handle('watch:markWatched', async (_, key) => markWatched(key))
+ipcMain.handle('watch:markUnwatched', async (_, key) => markUnwatched(key))
+ipcMain.handle('watch:clearAll', async () => clearAllProgress())
+
+ipcMain.handle('player:open', async (_, filePath, startTime) => {
+  const store = await getStore()
+  const detectedVlc = 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe'
+  const playerExe = store.get('playerPath', '') || (fs.existsSync(detectedVlc) ? detectedVlc : '')
+  const playerName = ((await getStore()).get('playerName', '') || '').toLowerCase()
+
+  try {
+    let args = [filePath]
+    let resumed = false
+
+    if (playerExe && fs.existsSync(playerExe)) {
+      // Intentar pasar startTime segun el reproductor configurado
+      if (startTime > 0) {
+        const name = `${path.basename(playerExe, '.exe')} ${playerName}`.toLowerCase()
+        const seconds = Math.floor(Number(startTime) || 0)
+        const hh = String(Math.floor(seconds / 3600)).padStart(2, '0')
+        const mm = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')
+        const ss = String(seconds % 60).padStart(2, '0')
+        const clock = `${hh}:${mm}:${ss}`
+
+        if (name.includes('vlc')) {
+          args = ['--start-time=' + seconds, filePath]
+          resumed = true
+        } else if (name.includes('mpc') || name.includes('mpc-hc') || name.includes('mpc-be')) {
+          args = [filePath, '/startpos', clock]
+          resumed = true
+        } else if (name.includes('potplayer') || name.includes('pot')) {
+          args = ['/seek=' + clock, filePath]
+          resumed = true
+        } else if (name.includes('mpv')) {
+          args = ['--start=' + seconds, filePath]
+          resumed = true
+        }
+      }
+
+      execFile(playerExe, args, { detached: true })
+    } else {
+      await shell.openPath(filePath)
+    }
+    return { ok: true, resumed: startTime > 0 ? resumed : null }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
+})
+
+ipcMain.handle('player:openTracked', async (_, payload) => openTrackedPlayback(payload || {}, mainWindow))
+ipcMain.handle('player:stopTracked', async () => stopTrackedPlayback())
+ipcMain.handle('player:commandTracked', async (_, payload = {}) => commandTrackedPlayback(payload.action, payload.value))
+ipcMain.handle('player:getTrackedStatus', async () => {
+  const executable = await getVlcPath()
+  return { available: Boolean(executable), executable }
+})
+
+ipcMain.handle('player:findFile', async (_, { savePath }) => {
+  const videoExts = ['.mkv', '.mp4', '.avi', '.mov', '.wmv', '.m4v']
+
+  function findVideos(dir) {
+    if (!fs.existsSync(dir)) return []
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    let files = []
+
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) files = files.concat(findVideos(full))
+      else if (videoExts.includes(path.extname(entry.name).toLowerCase())) {
+        files.push({ path: full, size: fs.statSync(full).size })
+      }
+    }
+
+    return files
+  }
+
+  const videos = findVideos(savePath)
+  if (!videos.length) return null
+  return videos.sort((a, b) => b.size - a.size)[0].path
+})
+
+ipcMain.handle('player:selectExe', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Seleccionar reproductor de video',
+    filters: [{ name: 'Ejecutables', extensions: ['exe'] }],
+    properties: ['openFile']
+  })
+  return result.canceled ? null : result.filePaths[0]
+})
+
+ipcMain.handle('player:getConfig', async () => ({
+  playerPath: (await getStore()).get('playerPath', ''),
+  playerName: (await getStore()).get('playerName', '')
+}))
+
+ipcMain.handle('player:saveConfig', async (_, { playerPath, playerName }) => {
+  const store = await getStore()
+  store.set('playerPath', playerPath)
+  store.set('playerName', playerName)
+  return true
+})
+
+// IPC: qBittorrent externo
+ipcMain.handle('qbittorrent:getConfig', async () => qbittorrent.getConfig())
+ipcMain.handle('qbittorrent:setConfig', async (_, config) => qbittorrent.setConfig(config))
+ipcMain.handle('qbittorrent:engineStatus', async () => qbittorrent.getEngineStatus())
+ipcMain.handle('qbittorrent:startManaged', async () => qbittorrent.startManagedEngine())
+ipcMain.handle('qbittorrent:stopManaged', async () => qbittorrent.stopManagedEngine())
+ipcMain.handle('qbittorrent:ping', async () => qbittorrent.ping())
+ipcMain.handle('qbittorrent:list', async (_, filter) => qbittorrent.listTorrents(filter))
+ipcMain.handle('qbittorrent:transferInfo', async () => qbittorrent.getTransferInfo())
+ipcMain.handle('qbittorrent:add', async (_, payload) => qbittorrent.addTorrent(payload || {}))
+ipcMain.handle('qbittorrent:pause', async (_, hash) => qbittorrent.pauseTorrent(hash))
+ipcMain.handle('qbittorrent:resume', async (_, hash) => qbittorrent.resumeTorrent(hash))
+ipcMain.handle('qbittorrent:delete', async (_, payload) => qbittorrent.deleteTorrent(payload || {}))
+ipcMain.handle('qbittorrent:openContent', async (_, torrent) => {
+  const targetPath = qbittorrent.getTorrentContentRoot(torrent)
+  const fallbackPath = torrent?.save_path || ''
+  const existingPath = targetPath && fs.existsSync(targetPath) ? targetPath : fallbackPath
+  if (!existingPath) return { ok: false, error: 'No se pudo resolver la ruta.' }
+  const openResult = await shell.openPath(existingPath)
+  return openResult ? { ok: false, error: openResult } : { ok: true }
+})
+ipcMain.handle('qbittorrent:importContent', async (_, torrent) => {
+  const targetPath = qbittorrent.getTorrentContentRoot(torrent)
+  const fallbackPath = torrent?.save_path || ''
+  const existingPath = targetPath && fs.existsSync(targetPath) ? targetPath : fallbackPath
+  if (!existingPath || !fs.existsSync(existingPath)) return { ok: false, error: 'La ruta descargada todavia no existe.' }
+  const imported = await importPaths([existingPath])
+  return { ok: true, imported }
+})

@@ -1,0 +1,36 @@
+appId: com.miravault.app
+productName: MiraVault
+directories:
+  output: dist-electron
+  buildResources: public
+files:
+  - electron/**/*
+  - dist/**/*
+  - package.json
+  - node_modules/**/*
+extraResources:
+  - from: portable/qbittorrent
+    to: qbittorrent
+    filter: ["**/*"]
+  - from: portable/vlc
+    to: vlc
+    filter: ["**/*"]
+win:
+  target:
+    - target: portable
+      arch: [x64]
+    - target: nsis
+      arch: [x64]
+  icon: public/icon.ico
+portable:
+  artifactName: MiraVault-portable-${version}.exe
+  requestExecutionLevel: user
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: public/icon.ico
+  uninstallerIcon: public/icon.ico
+  artifactName: MiraVault-Setup-${version}.exe
+  shortcutName: MiraVault
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
