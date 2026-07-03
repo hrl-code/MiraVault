@@ -8,7 +8,7 @@ MiraVault is an open-source desktop app for organizing, exploring, and watching 
 
 [Download for Windows](https://github.com/hrl-code/MiraVault/releases) | [Changelog](CHANGELOG.md) | [Privacy](PRIVACY.md) | [Issues](https://github.com/hrl-code/MiraVault/issues)
 
-![Version](https://img.shields.io/badge/version-0.4.3-blue)
+![Version](https://img.shields.io/badge/version-0.4.4-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-0b7285)
 ![Status](https://img.shields.io/badge/status-beta-orange)
 ![License](https://img.shields.io/badge/license-open--source-brightgreen)

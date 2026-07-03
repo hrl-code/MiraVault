@@ -2,6 +2,21 @@
 
 Todas las notas importantes de MiraVault se documentan aqui por version.
 
+## [0.4.4] - 2026-07-03
+
+### Added
+
+- Sistema inicial de fuentes externas configuradas por el usuario para torrents.
+- Soporte base para fuentes RSS, Torznab, JSON personalizado y carpetas locales.
+- Busqueda en proveedores configurados desde la pantalla de Torrents.
+- Descarga directa de resultados encontrados usando el motor torrent activo.
+- Aviso legal visible: MiraVault no proporciona, recomienda ni verifica fuentes de torrents.
+
+### Changed
+
+- El README documenta que MiraVault no incluye proveedores, indices, trackers ni fuentes por defecto.
+- La configuracion de proveedores se guarda localmente y no se sincroniza con ningun servicio externo.
+
 ## [0.4.3] - 2026-07-02
 
 ### Added
