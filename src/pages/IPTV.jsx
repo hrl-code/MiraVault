@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/Toast'
 
 const STORAGE_KEY = 'mv-iptv-playlists'
 const LEGACY_STORAGE_KEY = `${'t'}v-iptv-playlists`
+const FAVORITES_KEY = 'mv-iptv-favorites'
 
 function TvIcon({ className = 'h-5 w-5' }) {
   return (
@@ -72,6 +73,23 @@ function saveStoredPlaylists(playlists) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(playlists))
 }
 
+function readFavorites() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function saveFavorites(favorites) {
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites))
+}
+
+function getChannelKey(channel) {
+  return `${channel?.source || 'IPTV'}:${channel?.url || channel?.name || ''}`
+}
+
 export default function IPTV() {
   const { show } = useToast()
   const navigate = useNavigate()
@@ -81,10 +99,13 @@ export default function IPTV() {
   const [manualText, setManualText] = useState('')
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState('all')
+  const [favorites, setFavorites] = useState([])
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     setPlaylists(readStoredPlaylists())
+    setFavorites(readFavorites())
   }, [])
 
   const channels = useMemo(() => (
@@ -98,11 +119,12 @@ export default function IPTV() {
   const filteredChannels = useMemo(() => {
     const safeQuery = query.trim().toLowerCase()
     return channels.filter((channel) => {
+      const matchesFavorite = !favoritesOnly || favorites.includes(getChannelKey(channel))
       const matchesGroup = group === 'all' || channel.group === group
       const matchesQuery = !safeQuery || `${channel.name} ${channel.group} ${channel.source}`.toLowerCase().includes(safeQuery)
-      return matchesGroup && matchesQuery
+      return matchesFavorite && matchesGroup && matchesQuery
     })
-  }, [channels, group, query])
+  }, [channels, favorites, favoritesOnly, group, query])
 
   function persist(nextPlaylists) {
     setPlaylists(nextPlaylists)
@@ -178,6 +200,15 @@ export default function IPTV() {
     })
   }
 
+  function toggleFavorite(channel) {
+    const key = getChannelKey(channel)
+    const isFavorite = favorites.includes(key)
+    const nextFavorites = isFavorite ? favorites.filter((entry) => entry !== key) : [...favorites, key]
+    setFavorites(nextFavorites)
+    saveFavorites(nextFavorites)
+    show(isFavorite ? 'Canal quitado de favoritos' : 'Canal anadido a favoritos', 'info')
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -189,7 +220,7 @@ export default function IPTV() {
           </p>
         </div>
         <div className="rounded-full bg-[color:var(--accent-muted)] px-4 py-2 text-sm text-[color:var(--accent)]">
-          {channels.length} canales
+          {channels.length} canales - {favorites.length} favoritos
         </div>
       </header>
 
@@ -219,7 +250,7 @@ export default function IPTV() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{playlist.name}</p>
-                    <p className="truncate text-xs text-[color:var(--text-muted)]">{playlist.url || 'Manual'} · {parseM3U(playlist.content, playlist.name).length} canales</p>
+                    <p className="truncate text-xs text-[color:var(--text-muted)]">{playlist.url || 'Manual'} - {parseM3U(playlist.content, playlist.name).length} canales</p>
                   </div>
                   <div className="flex gap-2">
                     {playlist.url ? <button type="button" onClick={() => refreshPlaylist(playlist)} className="rounded-lg px-2 py-1 text-xs text-[color:var(--accent)] hover:bg-[color:var(--accent-muted)]">Actualizar</button> : null}
@@ -240,21 +271,51 @@ export default function IPTV() {
             <select value={group} onChange={(event) => setGroup(event.target.value)} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]">
               {groups.map((entry) => <option key={entry} value={entry}>{entry === 'all' ? 'Todos los grupos' : entry}</option>)}
             </select>
+            <button
+              type="button"
+              onClick={() => setFavoritesOnly((current) => !current)}
+              className={[
+                'rounded-2xl px-4 py-3 text-sm transition',
+                favoritesOnly
+                  ? 'bg-[color:var(--accent)] text-white'
+                  : 'border border-[color:var(--border)] text-[color:var(--text-secondary)] hover:bg-[color:var(--bg-hover)] hover:text-[color:var(--text-primary)]'
+              ].join(' ')}
+            >
+              Favoritos
+            </button>
           </div>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filteredChannels.map((channel) => (
-            <button key={`${channel.source}-${channel.url}`} type="button" onClick={() => playChannel(channel)} className="group flex items-center gap-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)]/55 p-3 text-left transition hover:border-[color:var(--accent)] hover:bg-[color:var(--bg-hover)]">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[color:var(--accent-muted)] text-[color:var(--accent)]">
-                {channel.logo ? <img src={channel.logo} alt="" className="h-full w-full object-contain" /> : <TvIcon />}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{channel.name}</p>
-                <p className="truncate text-xs text-[color:var(--text-muted)]">{channel.group} · {channel.source}</p>
-              </div>
-            </button>
-          ))}
+          {filteredChannels.map((channel) => {
+            const favorite = favorites.includes(getChannelKey(channel))
+            return (
+              <article key={`${channel.source}-${channel.url}`} className="group flex items-center gap-3 rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)]/55 p-3 text-left transition hover:border-[color:var(--accent)] hover:bg-[color:var(--bg-hover)]">
+                <button type="button" onClick={() => playChannel(channel)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[color:var(--accent-muted)] text-[color:var(--accent)]">
+                    {channel.logo ? <img src={channel.logo} alt="" className="h-full w-full object-contain" /> : <TvIcon />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">{channel.name}</p>
+                    <p className="truncate text-xs text-[color:var(--text-muted)]">{channel.group} - {channel.source}</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(channel)}
+                  title={favorite ? 'Quitar de favoritos' : 'Anadir a favoritos'}
+                  className={[
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-lg transition',
+                    favorite
+                      ? 'border-[#d6a84f]/45 bg-[#d6a84f]/15 text-[#f0c979]'
+                      : 'border-[color:var(--border)] text-[color:var(--text-muted)] hover:bg-[color:var(--bg-hover)] hover:text-[#f0c979]'
+                  ].join(' ')}
+                >
+                  {favorite ? '★' : '☆'}
+                </button>
+              </article>
+            )
+          })}
         </div>
 
         {channels.length > 0 && filteredChannels.length === 0 ? (

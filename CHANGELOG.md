@@ -2,6 +2,22 @@
 
 Todas las notas importantes de MiraVault se documentan aqui por version.
 
+## [Unreleased]
+
+## [0.4.5] - 2026-07-04
+
+### Fixed
+
+- El instalador manual vuelve a incrustar el icono de MiraVault en el ejecutable de Windows.
+- La comprobacion de actualizaciones apunta al repositorio actual `Destr0code/MiraVault`.
+- El popup de primeros pasos solo se muestra una vez y queda guardado en la configuracion persistente de la app.
+
+### Added
+
+- Panel de salud en Biblioteca con episodios faltantes y posibles titulos duplicados.
+- Favoritos de IPTV persistentes, filtro de favoritos y soporte visual para logos `tvg-logo` de listas M3U.
+- Filtros de resultados de proveedores torrent por calidad, idioma, seeders minimos y tamano maximo.
+
 ## [0.4.4] - 2026-07-03
 
 ### Added

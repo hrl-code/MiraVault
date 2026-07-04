@@ -74,6 +74,9 @@ const providerTypes = [
   { value: 'folder', label: 'Carpeta local' }
 ]
 
+const providerQualityFilters = ['all', '4K', '1080p', '720p', 'HDRip']
+const providerLanguageFilters = ['all', 'ESP', 'VOSE', 'DUAL', 'ENG']
+
 function getDownloadedBytes(torrent) {
   const completed = Number(torrent.completed || 0)
   if (completed > 0) return completed
@@ -197,6 +200,10 @@ export default function Downloads() {
   const [providerDraft, setProviderDraft] = useState({ name: '', type: 'rss', url: '', apiKey: '', enabled: true })
   const [providerQuery, setProviderQuery] = useState('')
   const [providerResults, setProviderResults] = useState([])
+  const [providerQuality, setProviderQuality] = useState('all')
+  const [providerLanguage, setProviderLanguage] = useState('all')
+  const [providerMinSeeds, setProviderMinSeeds] = useState('')
+  const [providerMaxSizeGb, setProviderMaxSizeGb] = useState('')
   const [providerSearching, setProviderSearching] = useState(false)
 
   const stats = useMemo(() => {
@@ -231,6 +238,21 @@ export default function Downloads() {
       return (left - right) * direction
     })
   }, [torrents, sortBy, sortDirection])
+
+  const filteredProviderResults = useMemo(() => {
+    const minSeeds = Number(providerMinSeeds)
+    const maxSizeBytes = Number(providerMaxSizeGb) > 0 ? Number(providerMaxSizeGb) * 1024 * 1024 * 1024 : 0
+
+    return providerResults.filter((item) => {
+      const itemQuality = String(item.quality || '').toLowerCase()
+      const itemLanguage = String(item.language || '').toLowerCase()
+      const matchesQuality = providerQuality === 'all' || itemQuality === providerQuality.toLowerCase()
+      const matchesLanguage = providerLanguage === 'all' || itemLanguage === providerLanguage.toLowerCase()
+      const matchesSeeds = !Number.isFinite(minSeeds) || minSeeds <= 0 || Number(item.seeders || 0) >= minSeeds
+      const matchesSize = !maxSizeBytes || !item.size || Number(item.size || 0) <= maxSizeBytes
+      return matchesQuality && matchesLanguage && matchesSeeds && matchesSize
+    })
+  }, [providerLanguage, providerMaxSizeGb, providerMinSeeds, providerQuality, providerResults])
 
   function handleSort(nextSortBy) {
     if (nextSortBy === sortBy) {
@@ -373,10 +395,14 @@ export default function Downloads() {
       show('Pon una URL o carpeta para la fuente', 'error')
       return
     }
-    const next = await window.electronAPI?.torrentProvidersSave?.(providerDraft)
-    setProviders(Array.isArray(next) ? next : [])
-    setProviderDraft({ name: '', type: 'rss', url: '', apiKey: '', enabled: true })
-    show('Fuente guardada', 'success')
+    try {
+      const next = await window.electronAPI?.torrentProvidersSave?.(providerDraft)
+      setProviders(Array.isArray(next) ? next : [])
+      setProviderDraft({ name: '', type: 'rss', url: '', apiKey: '', enabled: true })
+      show('Fuente guardada', 'success')
+    } catch (error) {
+      show(error.message || 'No se pudo guardar la fuente', 'error')
+    }
   }
 
   async function deleteProvider(provider) {
@@ -393,10 +419,15 @@ export default function Downloads() {
 
   async function searchProviders() {
     setProviderSearching(true)
-    const items = await window.electronAPI?.torrentProvidersSearch?.({ query: providerQuery })
-    setProviderSearching(false)
-    setProviderResults(Array.isArray(items) ? items : [])
-    if (!Array.isArray(items) || items.length === 0) show('Sin resultados en tus fuentes', 'info')
+    try {
+      const items = await window.electronAPI?.torrentProvidersSearch?.({ query: providerQuery })
+      setProviderResults(Array.isArray(items) ? items : [])
+      if (!Array.isArray(items) || items.length === 0) show('Sin resultados en tus fuentes', 'info')
+    } catch (error) {
+      show(error.message || 'No se pudo buscar en las fuentes', 'error')
+    } finally {
+      setProviderSearching(false)
+    }
   }
 
   async function downloadProviderResult(item) {
@@ -556,7 +587,12 @@ export default function Downloads() {
           <select value={providerDraft.type} onChange={(event) => setProviderDraft((current) => ({ ...current, type: event.target.value }))} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]">
             {providerTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
           </select>
-          <input value={providerDraft.url} onChange={(event) => setProviderDraft((current) => ({ ...current, url: event.target.value }))} placeholder={providerDraft.type === 'folder' ? 'Carpeta local' : 'URL. Usa {query} si la fuente acepta busqueda'} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
+          <input
+            value={providerDraft.url}
+            onChange={(event) => setProviderDraft((current) => ({ ...current, url: event.target.value }))}
+            placeholder={providerDraft.type === 'folder' ? 'Carpeta local' : 'URL. Usa {query} si la fuente acepta busqueda'}
+            className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]"
+          />
           <input value={providerDraft.apiKey} onChange={(event) => setProviderDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder="API key opcional" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
           <button type="button" onClick={saveProvider} className="rounded-xl bg-[color:var(--accent)] px-4 py-3 text-sm font-medium text-white">Guardar</button>
         </div>
@@ -567,6 +603,32 @@ export default function Downloads() {
         <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
           <input value={providerQuery} onChange={(event) => setProviderQuery(event.target.value)} placeholder="Buscar en tus fuentes configuradas" className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]" />
           <button type="button" onClick={searchProviders} disabled={providerSearching || providers.length === 0} className="rounded-xl border border-[color:var(--border)] px-4 py-3 text-sm text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)] disabled:opacity-50">Buscar fuentes</button>
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <select value={providerQuality} onChange={(event) => setProviderQuality(event.target.value)} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]">
+            {providerQualityFilters.map((quality) => <option key={quality} value={quality}>{quality === 'all' ? 'Todas las calidades' : quality}</option>)}
+          </select>
+          <select value={providerLanguage} onChange={(event) => setProviderLanguage(event.target.value)} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]">
+            {providerLanguageFilters.map((language) => <option key={language} value={language}>{language === 'all' ? 'Todos los idiomas' : language}</option>)}
+          </select>
+          <input
+            type="number"
+            min="0"
+            value={providerMinSeeds}
+            onChange={(event) => setProviderMinSeeds(event.target.value)}
+            placeholder="Seeds minimos"
+            className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]"
+          />
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={providerMaxSizeGb}
+            onChange={(event) => setProviderMaxSizeGb(event.target.value)}
+            placeholder="Tamano max. GB"
+            className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--bg-secondary)] px-4 py-3 text-sm outline-none focus:border-[color:var(--accent)]"
+          />
         </div>
 
         {providers.length > 0 ? (
@@ -590,10 +652,17 @@ export default function Downloads() {
 
         {providerResults.length > 0 ? (
           <div className="mt-5 space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">Resultados</h3>
-            {providerResults.map((item) => (
+            <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+              Resultados {filteredProviderResults.length}/{providerResults.length}
+            </h3>
+            {filteredProviderResults.map((item) => (
               <ProviderResultRow key={`${item.providerId}-${item.id}`} item={item} onDownload={downloadProviderResult} />
             ))}
+            {filteredProviderResults.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-[color:var(--border)] px-4 py-6 text-center text-sm text-[color:var(--text-muted)]">
+                Ningun resultado cumple los filtros actuales.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </section>

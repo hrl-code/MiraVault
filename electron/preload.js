@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   appMarkVersionNoticeSeen: (version) => ipcRenderer.invoke('app:markVersionNoticeSeen', version),
   appCheckForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   appDismissUpdateVersion: (version) => ipcRenderer.invoke('app:dismissUpdateVersion', version),
+  appGetOnboardingSeen: () => ipcRenderer.invoke('app:getOnboardingSeen'),
+  appMarkOnboardingSeen: () => ipcRenderer.invoke('app:markOnboardingSeen'),
   appGetSupportInfo: () => ipcRenderer.invoke('app:getSupportInfo'),
   appCopySupportInfo: () => ipcRenderer.invoke('app:copySupportInfo'),
 

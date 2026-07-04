@@ -1,12 +1,12 @@
 {
   "name": "miravault",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Centro multimedia local para biblioteca, IPTV, torrents y progreso de visionado",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite --port 5173 --strictPort\" \"wait-on tcp:5173 && electron .\"",
-    "build": "vite build && electron-builder --win nsis",
-    "build:installer": "vite build && electron-builder --win nsis",
+    "build": "vite build && electron-builder --win nsis --config.win.signAndEditExecutable=false",
+    "build:installer": "vite build && electron-builder --win nsis --config.win.signAndEditExecutable=false",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -27,6 +27,7 @@
     "electron": "^31.2.0",
     "electron-builder": "^24.13.3",
     "postcss": "^8.4.39",
+    "rcedit": "^4.0.1",
     "tailwindcss": "^3.4.6",
     "vite": "^5.3.4",
     "wait-on": "^7.2.0"

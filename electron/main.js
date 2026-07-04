@@ -267,6 +267,11 @@ ipcMain.handle('app:getVersionNotice', () => getVersionNotice())
 ipcMain.handle('app:markVersionNoticeSeen', (_, version) => markVersionNoticeSeen(version))
 ipcMain.handle('app:checkForUpdates', () => checkForUpdates())
 ipcMain.handle('app:dismissUpdateVersion', (_, version) => dismissUpdateVersion(version))
+ipcMain.handle('app:getOnboardingSeen', async () => Boolean((await getStore()).get('onboardingSeen', false)))
+ipcMain.handle('app:markOnboardingSeen', async () => {
+  ;(await getStore()).set('onboardingSeen', true)
+  return true
+})
 ipcMain.handle('app:getSupportInfo', () => collectSupportInfo())
 ipcMain.handle('app:copySupportInfo', async () => {
   const info = await collectSupportInfo()

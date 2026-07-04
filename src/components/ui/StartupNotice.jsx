@@ -35,14 +35,16 @@ export default function StartupNotice() {
 
       const versionNotice = await api.appGetVersionNotice?.()
       const updateInfo = await api.appCheckForUpdates?.()
-      const [sources, player] = await Promise.all([
+      const [sources, player, onboardingSeen] = await Promise.all([
         api.libraryGetSources?.().catch(() => []),
-        api.playerGetConfig?.().catch(() => null)
+        api.playerGetConfig?.().catch(() => null),
+        api.appGetOnboardingSeen?.().catch(() => false)
       ])
       if (!alive) return
 
       const nextUpdate = updateInfo?.hasUpdate ? { type: 'update', ...updateInfo } : null
-      const shouldShowOnboarding = !window.localStorage.getItem('mv-onboarding-dismissed') && (
+      const legacyDismissed = window.localStorage.getItem('mv-onboarding-dismissed')
+      const shouldShowOnboarding = !onboardingSeen && !legacyDismissed && (
         !Array.isArray(sources) || sources.length === 0 || !player?.playerPath
       )
       const onboarding = shouldShowOnboarding ? {
@@ -92,6 +94,7 @@ export default function StartupNotice() {
     }
     if (modal.type === 'onboarding') {
       window.localStorage.setItem('mv-onboarding-dismissed', '1')
+      await window.electronAPI?.appMarkOnboardingSeen?.()
     }
 
     if (queue.length) {

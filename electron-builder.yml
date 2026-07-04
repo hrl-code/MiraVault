@@ -3,6 +3,7 @@ productName: MiraVault
 directories:
   output: dist-electron
   buildResources: public
+afterPack: build/afterPack.js
 files:
   - electron/**/*
   - dist/**/*

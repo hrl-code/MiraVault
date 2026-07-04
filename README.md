@@ -6,9 +6,9 @@
 
 MiraVault is an open-source desktop app for organizing, exploring, and watching your local media library. It helps you manage series, movies, IPTV, playback progress, metadata, subtitles, and downloads from one clean interface.
 
-[Download for Windows](https://github.com/hrl-code/MiraVault/releases) | [Changelog](CHANGELOG.md) | [Privacy](PRIVACY.md) | [Issues](https://github.com/hrl-code/MiraVault/issues)
+[Download for Windows](https://github.com/Destr0code/MiraVault/releases) | [Changelog](CHANGELOG.md) | [Privacy](PRIVACY.md) | [Issues](https://github.com/Destr0code/MiraVault/issues)
 
-![Version](https://img.shields.io/badge/version-0.4.4-blue)
+![Version](https://img.shields.io/badge/version-0.4.5-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-0b7285)
 ![Status](https://img.shields.io/badge/status-beta-orange)
 ![License](https://img.shields.io/badge/license-open--source-brightgreen)
@@ -31,7 +31,7 @@ It is designed to be **local-first**:
 
 Windows installers are published on the GitHub Releases page:
 
-**[Download the latest MiraVault release](https://github.com/hrl-code/MiraVault/releases/latest)**
+**[Download the latest MiraVault release](https://github.com/Destr0code/MiraVault/releases/latest)**
 
 Windows may show a SmartScreen warning while releases are not fully code-signed. MiraVault intends to use the **SignPath Foundation** for code signing of Windows installer releases when available.
 
@@ -63,7 +63,7 @@ It is not trying to replace professional media servers like Plex or Jellyfin. It
 
 ## Quick Start
 
-1. Install MiraVault from [Releases](https://github.com/hrl-code/MiraVault/releases/latest).
+1. Install MiraVault from [Releases](https://github.com/Destr0code/MiraVault/releases/latest).
 2. Open `Folders`.
 3. Select your media/library folders.
 4. Use the organizer preview before applying changes.
@@ -162,7 +162,7 @@ Use MiraVault only with content you own, content you created, public-domain cont
 ### Install
 
 ```powershell
-git clone https://github.com/hrl-code/MiraVault.git
+git clone https://github.com/Destr0code/MiraVault.git
 cd MiraVault
 npm install
 ```
@@ -198,12 +198,10 @@ npm install
 npm run build:installer
 ```
 
-Then upload these files from `dist-electron/` to the matching GitHub Release:
+For the current manual release flow, upload only the installer `.exe` to the matching GitHub Release:
 
 ```text
 MiraVault-Setup-x.y.z.exe
-MiraVault-Setup-x.y.z.exe.blockmap
-latest.yml
 ```
 
 Automated release builds will be revisited after code signing is ready.
@@ -271,6 +269,6 @@ Feedback, bug reports, and ideas are welcome.
 
 Use GitHub Issues:
 
-https://github.com/hrl-code/MiraVault/issues
+https://github.com/Destr0code/MiraVault/issues
 
 If you want to contribute code, please open an issue first for larger changes so the direction can be discussed before implementation.

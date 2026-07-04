@@ -3,7 +3,7 @@ const path = require('path')
 const { app } = require('electron')
 const { getStore } = require('./storeHelper')
 
-const REPO_API_URL = 'https://api.github.com/repos/hrl-code/MiraVault/releases/latest'
+const REPO_API_URL = 'https://api.github.com/repos/Destr0code/MiraVault/releases/latest'
 const CHANGELOG_NAME = 'CHANGELOG.md'
 
 function getCurrentVersion() {
@@ -122,8 +122,8 @@ async function checkForUpdates() {
       latestVersion,
       name: release.name || release.tag_name || '',
       body: release.body || '',
-      url: release.html_url || 'https://github.com/hrl-code/MiraVault/releases',
-      assetUrl: installerAsset?.browser_download_url || release.html_url || 'https://github.com/hrl-code/MiraVault/releases'
+      url: release.html_url || 'https://github.com/Destr0code/MiraVault/releases',
+      assetUrl: installerAsset?.browser_download_url || release.html_url || 'https://github.com/Destr0code/MiraVault/releases'
     }
   } catch (error) {
     return {
